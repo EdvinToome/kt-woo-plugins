@@ -44,6 +44,8 @@ What it does:
 - Watches completed WooCommerce orders
 - Matches purchased products against configured trigger products
 - Schedules up to 3 delayed emails through Action Scheduler
+- Tracks sent, opened, clicked, bought, and purchase value metrics
+- Stores tracking events in a dedicated WordPress database table for fast dashboard reads
 - Builds email content from one JSON settings field
 - Unschedules pending emails when orders are cancelled, refunded, or failed
 - Includes admin test URLs for step-by-step email testing
@@ -51,7 +53,13 @@ What it does:
 Admin settings:
 
 - `Settings > KT Upsell Emails`
+- Built-in tracking dashboard with `day / week / month / year` filters
 - One JSON configuration field with defaults
+
+Tracking note:
+
+- Dashboard stats are based on new tracking events written after deployment.
+- Existing historical order meta is not backfilled automatically.
 
 Main file:
 
@@ -95,8 +103,11 @@ Additional requirement for `kt-post-purchase-upsell`:
 2. Place an order containing a trigger product.
 3. Mark the order as `completed`.
 4. Confirm scheduled actions are created for all enabled steps.
-5. Run the admin test URLs if needed.
-6. Cancel, refund, or fail an order and confirm pending actions are removed.
+5. Open a received upsell email and confirm opens are tracked.
+6. Click the upsell CTA and confirm clicks are tracked.
+7. Complete a follow-up purchase from the same browser session and confirm bought count and revenue update.
+8. Run the admin test URLs if needed.
+9. Cancel, refund, or fail an order and confirm pending actions are removed.
 
 ## Repo Structure
 
@@ -106,5 +117,6 @@ kt-woo-plugins/
 │   ├── includes/
 │   └── kt-auto-apply-url-coupon.php
 └── kt-post-purchase-upsell/
+    ├── includes/
     └── kt-post-purchase-upsell.php
 ```

@@ -137,15 +137,25 @@ function kt_ppu_config(): array {
 	return kt_ppu_array_replace_recursive_distinct($defaults, $decoded);
 }
 
+require_once __DIR__ . '/includes/kt-ppu-event-store.php';
+require_once __DIR__ . '/includes/kt-ppu-tracking.php';
+require_once __DIR__ . '/includes/kt-ppu-dashboard.php';
+
+register_activation_hook(__FILE__, 'kt_ppu_install_event_table');
+add_action('plugins_loaded', 'kt_ppu_maybe_install_event_table');
+
 /**
  * -------------------------------------------------------
  * SETTINGS PAGE
  * -------------------------------------------------------
  */
 add_action('admin_menu', function () {
-	add_options_page(
+	kt_ppu_register_parent_menu();
+
+	add_submenu_page(
+		'kt-plugins',
 		'KT Upsell Emails',
-		'KT Upsell Emails',
+		'Upsell Emails',
 		'manage_options',
 		'kt-ppu-settings',
 		'kt_ppu_render_settings_page'
@@ -204,6 +214,7 @@ function kt_ppu_render_settings_page(): void {
 		<p>Paste all plugin settings here as one JSON object.</p>
 
 		<?php settings_errors(KT_PPU_OPTION_JSON); ?>
+		<?php kt_ppu_render_dashboard(); ?>
 
 		<form method="post" action="options.php">
 			<?php settings_fields('kt_ppu_settings_group'); ?>
@@ -228,32 +239,49 @@ function kt_ppu_render_settings_page(): void {
 	<?php
 }
 
+function kt_ppu_register_parent_menu(): void {
+	global $menu;
+
+	foreach ($menu as $item) {
+		if (($item[2] ?? '') === 'kt-plugins') {
+			return;
+		}
+	}
+
+	add_menu_page(
+		'KT Plugins',
+		'KT Plugins',
+		'manage_options',
+		'kt-plugins',
+		'kt_ppu_render_parent_page',
+		'dashicons-admin-plugins',
+		58
+	);
+}
+
+function kt_ppu_render_parent_page(): void {
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+	?>
+	<div class="wrap">
+		<h1>KT Plugins</h1>
+		<p>Open one of the plugin settings pages:</p>
+		<ul>
+			<li><a href="<?php echo esc_url(admin_url('admin.php?page=kt-ppu-settings')); ?>">Upsell Emails</a></li>
+			<?php if (class_exists('KT_Auto_Apply_URL_Coupon_Settings')): ?>
+				<li><a href="<?php echo esc_url(admin_url('admin.php?page=' . KT_Auto_Apply_URL_Coupon_Settings::PAGE_SLUG)); ?>">Auto Apply URL Coupon</a></li>
+			<?php endif; ?>
+		</ul>
+	</div>
+	<?php
+}
+
 /**
  * -------------------------------------------------------
  * INIT / DEBUG
  * -------------------------------------------------------
  */
-kt_ppu_log('Plugin file loaded');
-
-add_action('init', function () {
-	kt_ppu_log('Init fired', [
-		'action_scheduler_single_exists' => function_exists('as_schedule_single_action'),
-		'action_scheduler_has_exists'    => function_exists('as_has_scheduled_action'),
-		'action_scheduler_uns_exists'    => function_exists('as_unschedule_all_actions'),
-	]);
-}, 20);
-
-add_action('action_scheduler_init', function () {
-	kt_ppu_log('Action Scheduler initialized');
-});
-
-add_action('woocommerce_order_status_changed', function ($order_id, $from, $to) {
-	kt_ppu_log('Order status changed', [
-		'order_id' => $order_id,
-		'from'     => $from,
-		'to'       => $to,
-	]);
-}, 10, 3);
 
 /**
  * -------------------------------------------------------
@@ -381,7 +409,7 @@ function kt_ppu_get_email_heading(int $step, array $offer): string {
 	return (string) ($offer['title'] ?? '');
 }
 
-function kt_ppu_build_email_body(WC_Order $order, int $step, array $offer): string {
+function kt_ppu_build_email_body(WC_Order $order, int $step, array $offer, string $pixel_url = ''): string {
 	$config        = kt_ppu_config();
 	$colors        = $config['colors'] ?? [];
 	$texts         = $config['texts'] ?? [];
@@ -428,6 +456,14 @@ function kt_ppu_build_email_body(WC_Order $order, int $step, array $offer): stri
 			</div>';
 	}
 
+	$pixel_html = '';
+	if ($pixel_url !== '') {
+		$pixel_html = '
+		<div style="height:1px;overflow:hidden;">
+			<img src="' . esc_url($pixel_url) . '" alt="" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" />
+		</div>';
+	}
+
 	return '
 		<p>' . $greeting . '</p>
 		<p>' . esc_html($intro) . '</p>
@@ -459,6 +495,7 @@ function kt_ppu_build_email_body(WC_Order $order, int $step, array $offer): stri
 				' . esc_html($small_note) . '
 			</p>
 		</div>
+		' . $pixel_html . '
 	';
 }
 
@@ -532,11 +569,12 @@ function kt_ppu_get_delay_for_step(int $step): int {
  * SEND EMAIL
  * -------------------------------------------------------
  */
-function kt_ppu_send_email(WC_Order $order, int $step): void {
+function kt_ppu_send_email(WC_Order $order, int $step, bool $track = true): bool {
 	kt_ppu_log('Preparing to send email', [
 		'order_id' => $order->get_id(),
 		'step'     => $step,
 		'status'   => $order->get_status(),
+		'track'    => $track,
 	]);
 
 	$offer = kt_ppu_build_offer_data($order);
@@ -546,13 +584,19 @@ function kt_ppu_send_email(WC_Order $order, int $step): void {
 			'order_id' => $order->get_id(),
 			'step'     => $step,
 		]);
-		return;
+		return false;
+	}
+
+	$pixel_url = '';
+	if ($track) {
+		$offer['url'] = kt_ppu_build_tracked_offer_url($order, $step, (string) ($offer['url'] ?? ''));
+		$pixel_url    = kt_ppu_build_open_pixel_url($order, $step);
 	}
 
 	$to      = $order->get_billing_email();
 	$subject = kt_ppu_get_email_subject($step, $order);
 	$heading = kt_ppu_get_email_heading($step, $offer);
-	$body    = kt_ppu_build_email_body($order, $step, $offer);
+	$body    = kt_ppu_build_email_body($order, $step, $offer, $pixel_url);
 	$html    = kt_ppu_wrap_wc_email($heading, $body);
 
 	$config = kt_ppu_config();
@@ -591,6 +635,8 @@ function kt_ppu_send_email(WC_Order $order, int $step): void {
 	remove_filter('wp_mail_from', $from_filter);
 	remove_filter('wp_mail_from_name', $from_name_filter);
 	remove_filter('wp_mail_content_type', $content_type_filter);
+
+	return (bool) $result;
 }
 
 /**
@@ -743,10 +789,19 @@ add_action(KT_PPU_ACTION_HOOK, function ($order_id, $step) {
 		return;
 	}
 
-	kt_ppu_send_email($order, (int) $step);
+	$sent = kt_ppu_send_email($order, (int) $step, true);
+
+	if (!$sent) {
+		kt_ppu_log('Scheduled callback aborted: wp_mail returned false', [
+			'order_id' => $order_id,
+			'step'     => $step,
+		]);
+		return;
+	}
 
 	$order->update_meta_data($meta_key, current_time('mysql'));
 	$order->save();
+	kt_ppu_insert_event('sent', (int) $step, (int) $order_id);
 
 	kt_ppu_log('Scheduled callback finished, meta saved', [
 		'order_id' => $order_id,
@@ -828,9 +883,14 @@ add_action('admin_init', function () {
 		'step'     => $step,
 	]);
 
-	kt_ppu_send_email($order, $step);
+	kt_ppu_send_email($order, $step, true);
 
-	wp_die('Test email sent for order #' . $order_id . ', step ' . $step);
+	wp_die(
+		'Test email sent for order #' .
+		$order_id .
+		', step ' .
+		$step
+	);
 });
 
 /**
@@ -857,6 +917,13 @@ add_action('admin_init', function () {
 	$order->delete_meta_data('_kt_ppu_email_sent_step_1');
 	$order->delete_meta_data('_kt_ppu_email_sent_step_2');
 	$order->delete_meta_data('_kt_ppu_email_sent_step_3');
+
+	for ($step = 1; $step <= 3; $step++) {
+		$order->delete_meta_data(kt_ppu_tracking_token_meta_key($step));
+		$order->delete_meta_data(kt_ppu_tracking_opened_meta_key($step));
+		$order->delete_meta_data(kt_ppu_tracking_clicked_meta_key($step));
+	}
+
 	$order->save();
 
 	kt_ppu_log('Reset sent flags', [

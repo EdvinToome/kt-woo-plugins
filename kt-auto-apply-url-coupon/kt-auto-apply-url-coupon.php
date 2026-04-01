@@ -237,6 +237,11 @@ final class KT_Auto_Apply_URL_Coupon
             return;
         }
 
+        $product = wc_get_product(get_the_ID());
+        if (!$product instanceof WC_Product) {
+            return;
+        }
+
         $coupon_code = $this->get_pending_coupon();
         $query_param = $this->get_query_param();
 
@@ -254,12 +259,99 @@ final class KT_Auto_Apply_URL_Coupon
             return;
         }
 
+        if (!$this->coupon_applies_to_product($coupon, $product)) {
+            return;
+        }
+
         echo '<div class="kt-auto-coupon-badge">';
         echo "<strong>" . esc_html($this->get_badge_title()) . "</strong>";
         echo "<span>" .
             esc_html($this->get_badge_message($coupon_code)) .
             "</span>";
         echo "</div>";
+    }
+
+    private function coupon_applies_to_product($coupon, $product)
+    {
+        foreach ($this->get_coupon_badge_products($product) as $candidate) {
+            if ($this->coupon_matches_product_rules($coupon, $candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function get_coupon_badge_products($product)
+    {
+        if (!$product->is_type("variable")) {
+            return [$product];
+        }
+
+        $products = [];
+
+        foreach ($product->get_children() as $variation_id) {
+            $variation = wc_get_product($variation_id);
+
+            if ($variation) {
+                $products[] = $variation;
+            }
+        }
+
+        return $products;
+    }
+
+    private function coupon_matches_product_rules($coupon, $product)
+    {
+        $product_ids = [$product->get_id()];
+
+        if ($product->get_parent_id()) {
+            $product_ids[] = $product->get_parent_id();
+        }
+
+        $product_category_ids = wc_get_product_cat_ids(
+            $product->get_parent_id() ?: $product->get_id(),
+        );
+
+        if (
+            $coupon->get_product_ids() &&
+            !array_intersect($product_ids, $coupon->get_product_ids())
+        ) {
+            return false;
+        }
+
+        if (
+            $coupon->get_product_categories() &&
+            !array_intersect(
+                $product_category_ids,
+                $coupon->get_product_categories(),
+            )
+        ) {
+            return false;
+        }
+
+        if (
+            $coupon->get_excluded_product_ids() &&
+            array_intersect($product_ids, $coupon->get_excluded_product_ids())
+        ) {
+            return false;
+        }
+
+        if (
+            $coupon->get_excluded_product_categories() &&
+            array_intersect(
+                $product_category_ids,
+                $coupon->get_excluded_product_categories(),
+            )
+        ) {
+            return false;
+        }
+
+        if ($coupon->get_exclude_sale_items() && $product->is_on_sale()) {
+            return false;
+        }
+
+        return true;
     }
 
     public function output_coupon_badge_styles()

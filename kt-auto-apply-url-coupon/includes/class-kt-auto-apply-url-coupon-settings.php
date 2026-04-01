@@ -6,6 +6,7 @@ if (!defined("ABSPATH")) {
 
 final class KT_Auto_Apply_URL_Coupon_Settings
 {
+    const PARENT_SLUG = "kt-plugins";
     const OPTION_KEY = "kt_auto_apply_url_coupon_settings";
     const SETTINGS_GROUP = "kt_auto_apply_url_coupon_settings_group";
     const PAGE_SLUG = "kt-auto-apply-url-coupon";
@@ -38,13 +39,56 @@ final class KT_Auto_Apply_URL_Coupon_Settings
 
     public function register_page()
     {
-        add_options_page(
+        $this->register_parent_page();
+
+        add_submenu_page(
+            self::PARENT_SLUG,
             "KT Auto Apply URL Coupon",
-            "KT Auto Apply URL Coupon",
+            "Auto Apply URL Coupon",
             "manage_options",
             self::PAGE_SLUG,
             [$this, "render_page"],
         );
+    }
+
+    private function register_parent_page()
+    {
+        global $menu;
+
+        foreach ($menu as $item) {
+            if (($item[2] ?? "") === self::PARENT_SLUG) {
+                return;
+            }
+        }
+
+        add_menu_page(
+            "KT Plugins",
+            "KT Plugins",
+            "manage_options",
+            self::PARENT_SLUG,
+            [$this, "render_parent_page"],
+            "dashicons-admin-plugins",
+            58,
+        );
+    }
+
+    public function render_parent_page()
+    {
+        if (!current_user_can("manage_options")) {
+            return;
+        }
+        ?>
+		<div class="wrap">
+			<h1>KT Plugins</h1>
+			<p>Open one of the plugin settings pages:</p>
+			<ul>
+				<li><a href="<?php echo esc_url(admin_url("admin.php?page=" . self::PAGE_SLUG)); ?>">Auto Apply URL Coupon</a></li>
+				<?php if (function_exists("kt_ppu_render_settings_page")): ?>
+					<li><a href="<?php echo esc_url(admin_url("admin.php?page=kt-ppu-settings")); ?>">Upsell Emails</a></li>
+				<?php endif; ?>
+			</ul>
+		</div>
+		<?php
     }
 
     public function register_settings()
