@@ -112,7 +112,7 @@ function kt_ppu_render_dashboard(): void {
 	$range     = kt_ppu_dashboard_range();
 	$ranges    = kt_ppu_dashboard_ranges();
 	$stats     = kt_ppu_dashboard_stats($range);
-	$base_url  = add_query_arg(['page' => 'kt-ppu-settings'], admin_url('options-general.php'));
+	$base_url  = admin_url('admin.php?page=kt-ppu-settings');
 	?>
 	<h2>Tracking Dashboard</h2>
 	<p>Attributed purchases are counted when a customer clicks a tracked upsell email link and then places a checkout order in the same browser before the tracking cookie expires.</p>
