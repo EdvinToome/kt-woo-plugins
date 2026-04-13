@@ -103,8 +103,11 @@ function kt_ppu_default_config(): array
                 "Sul on digitaalne komplekt juba olemas – nüüd saad tellida ka sama materjali trükitud kujul. Kasuta allolevat sooduskoodi ja saad trükitud komplektilt {discount} alla.",
             "multi_description" =>
                 "Ostsid mitu digitaalset toodet. Vaata trükitud materjalide valikut ja kasuta allolevat sooduskoodi, et saada trükitud toodetelt {discount} soodustust.",
+            "coupon_code_label" => __("Coupon code", "woocommerce"),
             "small_note" =>
                 "Kasuta koodi, et saada trükitud toodetelt soodustust.",
+            "shared_offer_note" =>
+                "Kupong kehtib trükitud toodetele ühe korra kasutamiseks.",
             "footer_note" => "Aitäh, et kasutasid meie teenuseid!",
         ],
 
@@ -440,6 +443,16 @@ function kt_ppu_build_offer_data(WC_Order $order): ?array
             ),
             "url" => (string) ($config["printed_category_url"] ?? ""),
             "coupon_code" => (string) ($config["coupon_code"] ?? ""),
+            "coupon_code_label" => (string) kt_ppu_cfg(
+                $config,
+                "texts.coupon_code_label",
+                __("Coupon code", "woocommerce"),
+            ),
+            "box_note" => (string) kt_ppu_cfg(
+                $config,
+                "texts.shared_offer_note",
+                "Kupong kehtib trükitud toodetele ühe korra kasutamiseks.",
+            ),
         ];
     }
 
@@ -464,8 +477,125 @@ function kt_ppu_build_offer_data(WC_Order $order): ?array
         ),
         "url" => (string) ($single["printed_url"] ?? ""),
         "coupon_code" => (string) ($config["coupon_code"] ?? ""),
+        "coupon_code_label" => (string) kt_ppu_cfg(
+            $config,
+            "texts.coupon_code_label",
+            __("Coupon code", "woocommerce"),
+        ),
+        "box_note" => (string) kt_ppu_cfg(
+            $config,
+            "texts.shared_offer_note",
+            "Kupong kehtib trükitud toodetele ühe korra kasutamiseks.",
+        ),
     ];
 }
+
+function kt_ppu_render_shared_offer_box(
+    array $offer,
+    bool $is_email = false,
+): string {
+    $title = esc_html((string) ($offer["title"] ?? ""));
+    $description = esc_html((string) ($offer["description"] ?? ""));
+    $coupon_code_label = esc_html(
+        (string) ($offer["coupon_code_label"] ?? ""),
+    );
+    $coupon_code = esc_html((string) ($offer["coupon_code"] ?? ""));
+    $url = esc_url((string) ($offer["url"] ?? ""));
+    $button_text = esc_html((string) ($offer["button_text"] ?? ""));
+    $box_note = esc_html((string) ($offer["box_note"] ?? ""));
+
+    $wrapper_style = $is_email
+        ? "margin:20px 0;padding:20px;border:2px dashed #56B0F2;background:#e4f3fd;border-radius:12px;text-align:center;"
+        : "margin:30px 0;padding:24px;border:2px dashed #56B0F2;background:#e4f3fd;border-radius:16px;text-align:center;";
+
+    $title_style = $is_email
+        ? "margin:0 0 10px;font-size:20px;color:#2f3e5c;"
+        : "margin:0 0 12px;font-size:26px;color:#2f3e5c;";
+
+    ob_start();
+    ?>
+	<div style="<?php echo esc_attr($wrapper_style); ?>">
+		<h2 style="<?php echo esc_attr($title_style); ?>"><?php echo $title; ?></h2>
+		<p style="margin:0 0 16px;color:#4a5568;font-size:15px;line-height:1.6;"><?php echo $description; ?></p>
+		<p style="margin:0 0 8px;color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;"><?php echo $coupon_code_label; ?></p>
+
+		<div style="display:inline-block;padding:12px 20px;background:#ffffff;border:2px solid #56B0F2;border-radius:10px;font-size:22px;font-weight:700;letter-spacing:1px;color:#0a73c2;margin:0 0 16px;">
+			<?php echo $coupon_code; ?>
+		</div>
+
+		<p style="margin:0 0 16px;">
+			<a href="<?php echo $url; ?>" style="display:inline-block;padding:12px 22px;background:#56B0F2;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+				<?php echo $button_text; ?>
+			</a>
+		</p>
+
+		<p style="margin-top:12px;font-size:13px;color:#6b7280;">
+			<?php echo $box_note; ?>
+		</p>
+	</div>
+	<?php
+
+    return ob_get_clean();
+}
+
+function kt_ppu_render_order_received_offer($order): void
+{
+    if (!$order instanceof WC_Order) {
+        return;
+    }
+
+    $offer = kt_ppu_build_offer_data($order);
+
+    if (!$offer) {
+        return;
+    }
+
+    echo kt_ppu_render_shared_offer_box($offer);
+}
+
+function kt_ppu_render_native_order_email_offer(
+    $order,
+    $sent_to_admin,
+    $plain_text,
+    $email,
+): void {
+    if ($sent_to_admin || $plain_text) {
+        return;
+    }
+
+    if (!$order instanceof WC_Order) {
+        return;
+    }
+
+    $allowed_emails = [
+        "customer_processing_order",
+        "customer_completed_order",
+    ];
+
+    if (!in_array($email->id, $allowed_emails, true)) {
+        return;
+    }
+
+    $offer = kt_ppu_build_offer_data($order);
+
+    if (!$offer) {
+        return;
+    }
+
+    echo kt_ppu_render_shared_offer_box($offer, true);
+}
+
+add_action(
+    "woocommerce_order_details_before_order_table",
+    "kt_ppu_render_order_received_offer",
+    10,
+);
+add_action(
+    "woocommerce_email_before_order_table",
+    "kt_ppu_render_native_order_email_offer",
+    9,
+    4,
+);
 
 function kt_ppu_get_email_subject(int $step, WC_Order $order): string
 {

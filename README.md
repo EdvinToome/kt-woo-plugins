@@ -2,11 +2,12 @@
 
 Small WooCommerce-focused WordPress plugins for KT projects.
 
-This repo currently contains two standalone plugins:
+This repo currently contains four standalone plugins:
 
 - `kt-auto-apply-url-coupon`
 - `kt-post-purchase-upsell`
 - `kt-review-images`
+- `kt-conditional-phone-and-admin-subject`
 
 Each plugin is self-contained and can be copied into `wp-content/plugins/` on a WordPress site.
 
@@ -26,7 +27,7 @@ What it does:
 
 Admin settings:
 
-- `Settings > KT Auto Apply URL Coupon`
+- `KT Plugins > Auto Apply URL Coupon`
 - Configurable query parameter name
 - Configurable badge title
 - Configurable badge message using `{coupon}` placeholder
@@ -44,18 +45,20 @@ What it does:
 
 - Watches completed WooCommerce orders
 - Matches purchased products against configured trigger products
+- Shows a printed-product coupon box on the thank you page for qualifying orders
+- Shows the same printed-product coupon box in WooCommerce customer processing and completed emails
 - Schedules up to 3 delayed emails through Action Scheduler
 - Tracks sent, opened, clicked, bought, and purchase value metrics
 - Stores tracking events in a dedicated WordPress database table for fast dashboard reads
-- Builds email content from one JSON settings field
+- Builds delayed emails and the thank you/native-email coupon box from one JSON settings field
 - Unschedules pending emails when orders are cancelled, refunded, or failed
 - Includes admin test URLs for step-by-step email testing
 
 Admin settings:
 
-- `Settings > KT Upsell Emails`
+- `KT Plugins > Upsell Emails`
 - Built-in tracking dashboard with `day / week / month / year` filters
-- One JSON configuration field with defaults
+- One JSON configuration field with defaults for coupon settings, trigger products, delayed email content, and the thank you/native-email coupon box
 
 Tracking note:
 
@@ -96,6 +99,33 @@ Admin settings:
 - Defaults reuse WooCommerce/core strings where they already exist, with custom plugin-only strings added on top
 - One review copy tool with source and target product IDs
 
+### `kt-conditional-phone-and-admin-subject`
+
+Makes WooCommerce checkout phone requirement conditional and updates only admin new-order email subjects.
+
+What it does:
+
+- Sets `billing_phone` as required when the cart has physical products (`needs_shipping() === true`)
+- Sets `billing_phone` as optional when the cart is virtual-only
+- Appends the order total to every admin `New order` email subject
+- Appends `Physical` to admin `New order` email subject when the order includes physical products
+- Does not change customer email subjects
+
+Admin settings:
+
+- `KT Plugins > Conditional Phone`
+- One JSON settings field: `kt_conditional_phone_admin_subject_strings_json`
+- JSON keys:
+  - `phone_required_error`
+  - `admin_new_order_physical_marker`
+  - `admin_subject_separator`
+
+Main files:
+
+- [kt-conditional-phone-and-admin-subject.php](/Users/edvintoome/Work/kt-woo-plugins/kt-conditional-phone-and-admin-subject/kt-conditional-phone-and-admin-subject.php)
+- [class-kt-conditional-phone-and-admin-subject.php](/Users/edvintoome/Work/kt-woo-plugins/kt-conditional-phone-and-admin-subject/includes/class-kt-conditional-phone-and-admin-subject.php)
+- [class-kt-conditional-phone-and-admin-subject-settings.php](/Users/edvintoome/Work/kt-woo-plugins/kt-conditional-phone-and-admin-subject/includes/class-kt-conditional-phone-and-admin-subject-settings.php)
+
 ## Requirements
 
 - WordPress
@@ -109,7 +139,7 @@ Additional requirement for `kt-post-purchase-upsell`:
 
 1. Copy the plugin directory you want into `wp-content/plugins/`.
 2. Activate it in WordPress admin.
-3. Configure it under `Settings`.
+3. Configure it under `KT Plugins`.
 
 ## Development Notes
 
@@ -132,13 +162,15 @@ Additional requirement for `kt-post-purchase-upsell`:
 
 1. Configure trigger products and email content in the JSON settings page.
 2. Place an order containing a trigger product.
-3. Mark the order as `completed`.
-4. Confirm scheduled actions are created for all enabled steps.
-5. Open a received upsell email and confirm opens are tracked.
-6. Click the upsell CTA and confirm clicks are tracked.
-7. Complete a follow-up purchase from the same browser session and confirm bought count and revenue update.
-8. Run the admin test URLs if needed.
-9. Cancel, refund, or fail an order and confirm pending actions are removed.
+3. Confirm the thank you page shows the coupon box and links to the matching `printed_url` or the shared printed category URL when multiple trigger products were bought.
+4. Confirm the same coupon box appears in the WooCommerce customer processing or completed email.
+5. Mark the order as `completed`.
+6. Confirm scheduled actions are created for all enabled steps.
+7. Open a received upsell email and confirm opens are tracked.
+8. Click the upsell CTA and confirm clicks are tracked.
+9. Complete a follow-up purchase from the same browser session and confirm bought count and revenue update.
+10. Run the admin test URLs if needed.
+11. Cancel, refund, or fail an order and confirm pending actions are removed.
 
 ### `kt-review-images`
 
@@ -153,6 +185,17 @@ Additional requirement for `kt-post-purchase-upsell`:
 9. Open `KT Plugins > Review Images`, copy reviews from one product ID to another, and confirm the target product shows the duplicated reviews, ratings, and review images.
 10. Check the review section on desktop and mobile widths.
 
+### `kt-conditional-phone-and-admin-subject`
+
+1. Activate `kt-conditional-phone-and-admin-subject`.
+2. Add one physical product to cart and open checkout.
+3. Confirm `Phone` is required and rendered with the same required marker (`*`) as other mandatory fields.
+4. Place the order and confirm admin new-order email subject includes `Physical` and the order total.
+5. Add only virtual products to cart and open checkout.
+6. Confirm `Phone` is optional.
+7. Place the order and confirm admin new-order email subject does not include the physical marker.
+8. Confirm customer email subject remains unchanged for both order types.
+
 ## Repo Structure
 
 ```text
@@ -165,6 +208,9 @@ kt-woo-plugins/
 │   ├── includes/
 │   ├── templates/
 │   └── kt-review-images.php
+├── kt-conditional-phone-and-admin-subject/
+│   ├── includes/
+│   └── kt-conditional-phone-and-admin-subject.php
 └── kt-post-purchase-upsell/
     ├── includes/
     └── kt-post-purchase-upsell.php
